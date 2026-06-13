@@ -24,19 +24,25 @@ def download():
     if not url:
         return jsonify({"error": "No URL provided"}), 400
 
-    try:
-        # 3. 执行 yt-dlp 命令获取视频链接
-        # --get-url 会直接返回视频流地址，不会下载整个视频到服务器
-        result = subprocess.check_output(
-            ['yt-dlp', '--get-url', url], 
-            stderr=subprocess.STDOUT
-        )
-        video_url = result.decode().strip()
-        
-        return jsonify({"video_url": video_url})
-        
-    except subprocess.CalledProcessError as e:
-        return jsonify({"error": f"Failed to parse: {e.output.decode()}"}), 500
+   # 修改原来的 try 部分，改用 yt-dlp 获取 JSON 信息
+try:
+    # --dump-json 获取视频的元数据（预览图、分辨率等）
+    result = subprocess.check_output(
+        ['yt-dlp', '--dump-json', url], 
+        stderr=subprocess.STDOUT
+    )
+    # 解析 JSON 数据
+    import json
+    info = json.loads(result.decode())
+    
+    # 提取我们想要的数据
+    response_data = {
+        "title": info.get("title"),
+        "thumbnail": info.get("thumbnail"),
+        "formats": [{"url": f.get("url"), "note": f.get("format_note")} 
+                    for f in info.get("formats", []) if f.get("vcodec") != "none"]
+    }
+    return jsonify(response_data)
 
 @app.route('/', methods=['GET'])
 def index():
