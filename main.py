@@ -35,27 +35,12 @@ def download():
         return jsonify({"status": "error", "message": "URL missing"}), 400
     
     try:
-        # 使用 yt-dlp 模拟浏览器环境
-        # --user-agent: 模拟 iPhone
-        # --geo-bypass: 尝试绕过地理限制
-        # --no-playlist: 防止解析出整个列表浪费时间
-        cmd = [
-            'yt-dlp', 
-            '--dump-json', 
-            '--no-warnings', 
-            '--no-playlist',
-            '--user-agent', 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1',
-            '--geo-bypass',
-            url
-        ]
-        
+        # yt-dlp 支持绝大多数国内外视频网站
+        cmd = ['yt-dlp', '--dump-json', '--no-warnings', url]
         result = subprocess.run(cmd, capture_output=True, text=True)
         
         if result.returncode != 0:
-            # 关键调试点：打印错误日志
-            error_msg = result.stderr.strip()
-            print(f"DEBUG_ERROR: {error_msg}") 
-            return jsonify({"status": "error", "message": f"解析失败，请检查链接有效性"}), 200
+            return jsonify({"status": "error", "message": "解析失败，请检查链接"}), 200
             
         info = json.loads(result.stdout)
         return jsonify({
@@ -73,22 +58,24 @@ def proxy_download():
     video_url = request.args.get('url')
     if not video_url: return "No URL", 400
     
-    # 智能设置 Header，处理各平台防盗链
+    # 针对不同平台的智能 Header 策略
     headers = {'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1'}
     
     if 'x.com' in video_url or 'twitter.com' in video_url:
         headers['Referer'] = 'https://x.com/'
+    elif 'youtube.com' in video_url or 'youtu.be' in video_url:
+        headers['Referer'] = 'https://www.youtube.com/'
     elif 'tiktok.com' in video_url:
         headers['Referer'] = 'https://www.tiktok.com/'
     elif 'douyin.com' in video_url or 'iesdouyin.com' in video_url:
         headers['Referer'] = 'https://www.douyin.com/'
         
     try:
-        r = requests.get(video_url, headers=headers, stream=True, timeout=20)
+        r = requests.get(video_url, headers=headers, stream=True, timeout=15)
         return Response(stream_with_context(r.iter_content(chunk_size=1024)), 
                         content_type=r.headers.get('Content-Type', 'video/mp4'))
     except Exception as e:
-        return f"Proxy failed: {str(e)}", 500
+        return f"Download failed: {str(e)}", 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
