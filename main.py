@@ -10,24 +10,22 @@ app = Flask(__name__)
 # 配置：正式部署域名
 ALLOWED_DOMAIN = "video-downloader.youtube.kdns.fr"
 
-# 严格的跨域限制：只允许你的域名调用
+# 跨域配置
 CORS(app, origins=[f"https://{ALLOWED_DOMAIN}"])
 
 @app.route('/', methods=['GET'])
 def home():
-    return "怡烨科技 Twitter 解析服务运行中!", 200
+    return "怡烨科技 全能视频解析服务运行中!", 200
 
-# 校验函数
+# 安全校验函数
 def is_valid_request():
     referer = request.headers.get('Referer', '')
-    # 只要 Referer 中包含你的域名即视为合法请求
     if ALLOWED_DOMAIN in referer:
         return True
     return False
 
 @app.route('/download', methods=['POST'])
 def download():
-    # 安全检查
     if not is_valid_request():
         return jsonify({"status": "error", "message": "Access Denied"}), 403
         
@@ -37,12 +35,12 @@ def download():
         return jsonify({"status": "error", "message": "URL missing"}), 400
     
     try:
-        # 使用 yt-dlp 获取视频信息
+        # yt-dlp 支持绝大多数国内外视频网站
         cmd = ['yt-dlp', '--dump-json', '--no-warnings', url]
         result = subprocess.run(cmd, capture_output=True, text=True)
         
         if result.returncode != 0:
-            return jsonify({"status": "error", "message": "解析失败"}), 200
+            return jsonify({"status": "error", "message": "解析失败，请检查链接"}), 200
             
         info = json.loads(result.stdout)
         return jsonify({
@@ -60,11 +58,24 @@ def proxy_download():
     video_url = request.args.get('url')
     if not video_url: return "No URL", 400
     
-    # 这里通过添加 Referer 绕过 Twitter 对直接下载的限制
-    headers = {'User-Agent': 'Mozilla/5.0', 'Referer': 'https://x.com/'}
-    r = requests.get(video_url, headers=headers, stream=True)
-    return Response(stream_with_context(r.iter_content(chunk_size=1024)), 
-                    content_type=r.headers.get('Content-Type', 'video/mp4'))
+    # 针对不同平台的智能 Header 策略
+    headers = {'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1'}
+    
+    if 'x.com' in video_url or 'twitter.com' in video_url:
+        headers['Referer'] = 'https://x.com/'
+    elif 'youtube.com' in video_url or 'youtu.be' in video_url:
+        headers['Referer'] = 'https://www.youtube.com/'
+    elif 'tiktok.com' in video_url:
+        headers['Referer'] = 'https://www.tiktok.com/'
+    elif 'douyin.com' in video_url or 'iesdouyin.com' in video_url:
+        headers['Referer'] = 'https://www.douyin.com/'
+        
+    try:
+        r = requests.get(video_url, headers=headers, stream=True, timeout=15)
+        return Response(stream_with_context(r.iter_content(chunk_size=1024)), 
+                        content_type=r.headers.get('Content-Type', 'video/mp4'))
+    except Exception as e:
+        return f"Download failed: {str(e)}", 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
