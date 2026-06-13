@@ -6,33 +6,43 @@ import json
 import requests
 
 app = Flask(__name__)
-# 允许 GitHub Pages 域名跨域
-CORS(app, origins=["https://jevinyan1984-eng.github.io"])
 
-# 1. 监控路由：解决 UptimeRobot 404 问题
+# 修改：这里填入你最终部署域名的地址
+ALLOWED_DOMAIN = "https://your-domain.com" 
+CORS(app, origins=[ALLOWED_DOMAIN])
+
+# 根路由：保持监控正常
 @app.route('/', methods=['GET'])
 def home():
     return "API is running!", 200
 
-# 2. 核心解析路由
+# 校验器函数：检查 Referer
+def is_valid_request():
+    referer = request.headers.get('Referer')
+    # 如果没有 Referer 或者来源域名不是你的，则拒绝
+    if not referer or ALLOWED_DOMAIN not in referer:
+        return False
+    return True
+
 @app.route('/download', methods=['POST'])
 def download():
+    # 安全校验：阻止非本站调用
+    if not is_valid_request():
+        return jsonify({"status": "error", "message": "Access Denied: Invalid Origin"}), 403
+        
     data = request.json
     url = data.get('url')
     if not url:
         return jsonify({"status": "error", "message": "未提供URL"}), 400
     
     try:
-        # 使用 yt-dlp 获取视频信息
-        # 增加 --no-warnings 避免输出非 JSON 内容导致 json.loads 报错
         cmd = ['yt-dlp', '--dump-json', '--no-warnings', url]
         result = subprocess.run(cmd, capture_output=True, text=True)
         
         if result.returncode != 0:
-            return jsonify({"status": "error", "message": f"yt-dlp解析失败: {result.stderr}"}), 200
+            return jsonify({"status": "error", "message": f"解析失败: {result.stderr}"}), 200
             
         info = json.loads(result.stdout)
-        
         return jsonify({
             "status": "success",
             "title": info.get("title", "无标题"),
@@ -41,16 +51,15 @@ def download():
                         for f in info.get("formats", []) if f.get("vcodec") != "none"]
         })
     except Exception as e:
-        return jsonify({"status": "error", "message": f"服务器异常: {str(e)}"}), 200
+        return jsonify({"status": "error", "message": str(e)}), 200
 
-# 3. 下载代理路由：解决 403 权限问题
 @app.route('/proxy_download')
 def proxy_download():
+    # 安全校验：阻止非本站调用
+    if not is_valid_request():
+        return "Access Denied: Invalid Origin", 403
+        
     video_url = request.args.get('url')
-    if not video_url:
-        return "Missing URL", 400
-    
-    # 模拟真实浏览器请求，携带 Referer 绕过 Twitter 防盗链
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         'Referer': 'https://x.com/'
