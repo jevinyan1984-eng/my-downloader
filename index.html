@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<body>
+  <h2>Twitter 视频解析器</h2>
+  <input type="text" id="url" placeholder="粘贴 Twitter 链接" style="width:300px">
+  <button onclick="parse()">获取下载地址</button>
+  <div id="result" style="margin-top:20px"></div>
+
+  <script>
+    async function parse() {
+      const url = document.getElementById('url').value;
+      const resultDiv = document.getElementById('result');
+      resultDiv.innerText = "正在解析中，请稍候...";
+      
+      const response = await fetch('https://my-downloader-uqa0.onrender.com/download', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ url: url })
+      });
+      const data = await response.json();
+      resultDiv.innerHTML = `解析成功！<br><a href="${data.video_url.split('\n')[0]}" target="_blank">点击观看/下载视频</a>`;
+    }
+  </script>
+</body>
+</html>
