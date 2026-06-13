@@ -1,29 +1,40 @@
 from flask import Flask, request, jsonify
-from flask_cors import CORS # 加上这个来解决跨域
+from flask_cors import CORS
 import subprocess
 import os
 import json
 
 app = Flask(__name__)
-CORS(app) # 临时允许所有跨域，先跑通再说
+# 确保域名完全匹配
+CORS(app, origins=["https://jevinyan1984-eng.github.io"])
 
 @app.route('/download', methods=['POST'])
 def download():
+    data = request.json
+    url = data.get('url')
+    if not url:
+        return jsonify({"status": "error", "message": "未提供URL"}), 400
+    
     try:
-        url = request.json.get('url')
-        # 使用 --dump-json 获取完整信息，这比 --get-url 稳定得多
-        result = subprocess.check_output(['yt-dlp', '--dump-json', url], stderr=subprocess.STDOUT)
-        data = json.loads(result.decode())
+        # 使用 --dump-json 获取视频元数据
+        cmd = ['yt-dlp', '--dump-json', '--no-warnings', url]
+        result = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
+        info = json.loads(result.decode())
         
-        # 只提取我们需要的信息
         return jsonify({
             "status": "success",
-            "video_url": data.get("url"), # 适配旧逻辑
-            "title": data.get("title", "未知标题")
+            "title": info.get("title", "无标题"),
+            "thumbnail": info.get("thumbnail", ""),
+            "formats": [{"url": f.get("url"), "note": f.get("format_note", "高清")} 
+                        for f in info.get("formats", []) if f.get("vcodec") != "none"]
         })
     except Exception as e:
-        # 如果解析失败，不让后端崩掉，返回错误消息
+        # 错误时返回 status: error，不要直接 500 报错
         return jsonify({"status": "error", "message": str(e)}), 200
+
+@app.route('/', methods=['GET'])
+def index():
+    return "API is running."
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
