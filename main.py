@@ -1,30 +1,44 @@
 import os
 import json
 import subprocess
-from flask import Flask, request, jsonify
+import requests
+from flask import Flask, request, jsonify, Response, stream_with_context
 from flask_cors import CORS
 
 app = Flask(__name__)
-# 仅允许你的域名访问
+# 仅允许你的前端域名访问
 CORS(app, resources={r"/*": {"origins": "https://video-downloader.youtube.kdns.fr"}})
+
+@app.route('/stream_video', methods=['GET'])
+def stream_video():
+    video_url = request.args.get('url')
+    # 模拟真实浏览器请求，携带必须的 Referer
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer": "https://twitter.com/"
+    }
+    try:
+        # 使用 stream=True 进行流式处理，不一次性占用内存
+        req = requests.get(video_url, headers=headers, stream=True, timeout=30)
+        return Response(stream_with_context(req.iter_content(chunk_size=1024)), 
+                        content_type=req.headers.get('Content-Type', 'video/mp4'))
+    except Exception as e:
+        return "视频流传输失败", 500
 
 @app.route('/download', methods=['POST', 'OPTIONS'])
 def download():
     if request.method == 'OPTIONS': return '', 200
     
-    # 强制来源校验
-    referer = request.headers.get('Referer', '')
-    if "video-downloader.youtube.kdns.fr" not in referer:
+    # 强制来源校验，防止恶意 API 调用
+    if "video-downloader.youtube.kdns.fr" not in request.headers.get('Referer', ''):
         return jsonify({"status": "error", "message": "非法调用"}), 403
 
     data = request.json
-    url = data.get('url', '').split('?')[0] # 清理掉 URL 参数
-    if not url: return jsonify({"status": "error", "message": "请输入链接"}), 400
+    url = data.get('url', '').split('?')[0]
     
-    # Twitter 专属解析命令
     cmd = [
         'yt-dlp', '--dump-json', '--no-warnings', '--no-playlist',
-        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         '--referer', 'https://twitter.com/',
         '--cookies', 'twitter_cookies.txt',
         url
@@ -32,22 +46,23 @@ def download():
     
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
-        return jsonify({"status": "error", "message": "解析失败，请检查链接或 Cookie"}), 200
+        return jsonify({"status": "error", "message": "解析失败"}), 200
         
     try:
         info = json.loads(result.stdout)
-        # 获取所有 mp4 格式，并按分辨率从高到低排序
-        formats = [
-            {"url": f["url"], "res": f"{f.get('width')}x{f.get('height')}", "note": f.get("format_note", "高清")}
-            for f in info.get("formats", []) if f.get("ext") == "mp4" and f.get("url")
-        ]
-        formats.sort(key=lambda x: int(x["url"].split("?")[0].split("/")[-2].split("x")[0]) if "x" in x["url"] else 0, reverse=True)
+        formats = []
+        for f in info.get("formats", []):
+            if f.get("vcodec") != "none" and f.get("ext") == "mp4":
+                res = f"{f.get('width', 'Unknown')}x{f.get('height', 'Unknown')}"
+                # 将 URL 指向我们的 stream_video 代理接口
+                proxy_url = f"/stream_video?url={f.get('url')}"
+                formats.append({"url": proxy_url, "res": res, "note": f.get("format_note") or "高清"})
         
         return jsonify({
             "status": "success",
             "title": info.get("title", "Twitter 视频"),
             "thumbnail": info.get("thumbnail", ""),
-            "formats": formats[:3] # 取前3种最高画质
+            "formats": list({f['res']: f for f in formats}.values()) # 去重
         })
     except:
         return jsonify({"status": "error", "message": "数据解析异常"}), 200
