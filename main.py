@@ -7,27 +7,25 @@ import requests
 
 app = Flask(__name__)
 
-# 配置区域
-ALLOWED_DOMAIN = "videodownloader-bip.pages.dev"
-# 设置为 True 后，POSTman 等工具可以直接测试，无需 Referer
-DEBUG_MODE = False 
+# 配置：设置你最终的部署域名
+# 注意：不需要带 'https://'，只需域名部分即可
+ALLOWED_DOMAIN = "video-downloader.youtube.kdns.fr"
 
-CORS(app, resources={r"/*": {"origins": "*"}})
+# 1. 设置跨域白名单：只允许你这个域名发起 AJAX 请求
+CORS(app, origins=[f"https://{ALLOWED_DOMAIN}"])
 
 @app.route('/', methods=['GET'])
 def home():
-    return "API is running!", 200
+    return "怡烨科技 Twitter 解析服务运行中!", 200
 
+# 校验函数：双重保险
 def is_valid_request():
-    # 调试模式直接放行
-    if DEBUG_MODE:
-        return True
-        
     referer = request.headers.get('Referer', '')
+    
     # 打印日志到 Render Logs，解决你看不到请求来源的问题
     print(f"DEBUG: Checking Referer: {referer}") 
     
-    # 智能匹配：只要 referer 字符串里包含了你的域名就通过
+    # 逻辑：只要 Referer 字符串里包含了你的域名就通过
     if ALLOWED_DOMAIN in referer:
         return True
         
@@ -35,8 +33,9 @@ def is_valid_request():
 
 @app.route('/download', methods=['POST'])
 def download():
+    # 2. 如果 Referer 不匹配，直接返回 403 Forbidden
     if not is_valid_request():
-        return jsonify({"status": "error", "message": "Access Denied: Referer invalid"}), 403
+        return jsonify({"status": "error", "message": "Access Denied: Origin not allowed"}), 403
         
     data = request.json
     url = data.get('url')
@@ -48,7 +47,8 @@ def download():
         result = subprocess.run(cmd, capture_output=True, text=True)
         
         if result.returncode != 0:
-            return jsonify({"status": "error", "message": "解析失败，请检查链接"}), 200
+            print(f"DEBUG: yt-dlp error: {result.stderr}")
+            return jsonify({"status": "error", "message": "解析失败，推特视频链接不正确"}), 200
             
         info = json.loads(result.stdout)
         return jsonify({
@@ -59,11 +59,12 @@ def download():
                         for f in info.get("formats", []) if f.get("vcodec") != "none"]
         })
     except Exception as e:
+        print(f"DEBUG: Server error: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 200
 
 @app.route('/proxy_download')
 def proxy_download():
-    # 这里也可以增加校验，如果发现下载被盗链，可以加回 is_valid_request()
+    # 利用代理解决 Twitter 视频链接的 403 问题
     video_url = request.args.get('url')
     if not video_url: return "No URL", 400
     
@@ -73,5 +74,6 @@ def proxy_download():
                     content_type=r.headers.get('Content-Type', 'video/mp4'))
 
 if __name__ == '__main__':
+    # 确保在 Render 上正确绑定端口
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port)
