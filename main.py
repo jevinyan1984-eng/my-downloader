@@ -7,8 +7,11 @@ import requests
 
 app = Flask(__name__)
 
-# 设置你的域名
-ALLOWED_DOMAIN = "video-downloader.youtube.kdns.fr"
+# 配置区域
+ALLOWED_DOMAIN = "videodownloader-bip.pages.dev"
+# 设置为 True 后，POSTman 等工具可以直接测试，无需 Referer
+DEBUG_MODE = False 
+
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 @app.route('/', methods=['GET'])
@@ -16,12 +19,18 @@ def home():
     return "API is running!", 200
 
 def is_valid_request():
+    # 调试模式直接放行
+    if DEBUG_MODE:
+        return True
+        
     referer = request.headers.get('Referer', '')
-    print(f"DEBUG: Checking Referer: {referer}") # <--- 关键：在Render日志里查看这个值
+    # 打印日志到 Render Logs，解决你看不到请求来源的问题
+    print(f"DEBUG: Checking Referer: {referer}") 
     
-    # 检查逻辑：只要域名存在于 referer 中即通过
+    # 智能匹配：只要 referer 字符串里包含了你的域名就通过
     if ALLOWED_DOMAIN in referer:
         return True
+        
     return False
 
 @app.route('/download', methods=['POST'])
@@ -39,8 +48,7 @@ def download():
         result = subprocess.run(cmd, capture_output=True, text=True)
         
         if result.returncode != 0:
-            print(f"DEBUG: yt-dlp error: {result.stderr}") # <--- 关键：查看解析报错
-            return jsonify({"status": "error", "message": "解析失败"}), 200
+            return jsonify({"status": "error", "message": "解析失败，请检查链接"}), 200
             
         info = json.loads(result.stdout)
         return jsonify({
@@ -51,12 +59,11 @@ def download():
                         for f in info.get("formats", []) if f.get("vcodec") != "none"]
         })
     except Exception as e:
-        print(f"DEBUG: Server error: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 200
 
 @app.route('/proxy_download')
 def proxy_download():
-    # 允许直接访问，或者你也可以加上 referer 校验
+    # 这里也可以增加校验，如果发现下载被盗链，可以加回 is_valid_request()
     video_url = request.args.get('url')
     if not video_url: return "No URL", 400
     
