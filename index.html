@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 p-8">
+  <div class="max-w-2xl mx-auto bg-white p-6 rounded-xl shadow-lg">
+    <h2 class="text-2xl font-bold mb-4">Twitter 视频专业下载器</h2>
+    <div class="flex gap-2">
+      <input type="text" id="url" class="flex-1 border p-2 rounded" placeholder="粘贴 Twitter 链接...">
+      <button onclick="parse()" class="bg-blue-600 text-white px-4 py-2 rounded">解析</button>
+    </div>
+    
+    <div id="result" class="mt-6 hidden">
+      <img id="thumb" class="w-full rounded mb-4">
+      <h3 id="title" class="font-semibold mb-2"></h3>
+      <div id="formats" class="space-y-2"></div>
+    </div>
+  </div>
+
+  <script>
+    async function parse() {
+      const url = document.getElementById('url').value;
+      const res = await fetch('https://my-downloader-uqa0.onrender.com/download', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ url })
+      });
+      const data = await res.json();
+      
+      document.getElementById('result').classList.remove('hidden');
+      document.getElementById('thumb').src = data.thumbnail;
+      document.getElementById('title').innerText = data.title;
+      
+      const fDiv = document.getElementById('formats');
+      fDiv.innerHTML = data.formats.map(f => `
+        <a href="${f.url}" target="_blank" class="block bg-gray-200 p-2 rounded hover:bg-gray-300">
+          下载 ${f.note || '视频'}
+        </a>
+      `).join('');
+    }
+  </script>
+</body>
+</html>
