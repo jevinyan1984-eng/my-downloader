@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Twitter 万能视频下载器</title>
+  <title>万能视频下载器</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-50 min-h-screen py-10">
@@ -11,7 +11,7 @@
     <h1 class="text-3xl font-extrabold text-gray-800 mb-6 text-center">万能视频下载器</h1>
     
     <div class="flex gap-2 mb-6">
-      <input type="text" id="url" class="flex-1 border-2 border-gray-200 p-3 rounded-lg focus:outline-none focus:border-blue-500" placeholder="粘贴 Twitter 视频链接...">
+      <input type="text" id="url" class="flex-1 border-2 border-gray-200 p-3 rounded-lg focus:outline-none focus:border-blue-500" placeholder="粘贴视频链接...">
       <button onclick="parse()" id="parseBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-bold">解析</button>
     </div>
 
@@ -22,9 +22,13 @@
     </div>
 
     <div class="mt-10 pt-6 border-t text-center text-gray-500 text-sm">
-      <p class="mb-1">如有问题或定制需求：</p>
-      <p class="font-semibold text-gray-700">微信：jevinyan</p>
-      <p class="font-semibold text-gray-700">邮箱：<a href="mailto:jevinyan1984@gmail.com" class="text-blue-600 hover:underline">jevinyan1984@gmail.com</a></p>
+      <details class="cursor-pointer group">
+        <summary class="list-none hover:text-blue-600 font-medium transition">点击联系作者</summary>
+        <div class="mt-4 space-y-2 text-gray-700">
+          <p>微信：<span class="font-bold select-all">jevinyan</span></p>
+          <p>邮箱：<a href="mailto:jevinyan1984@gmail.com" class="text-blue-600 hover:underline">jevinyan1984@gmail.com</a></p>
+        </div>
+      </details>
     </div>
   </div>
 
@@ -34,11 +38,8 @@
     async function parse() {
       const url = document.getElementById('url').value;
       if (!url) return alert("请输入链接");
-
       const btn = document.getElementById('parseBtn');
-      btn.disabled = true;
-      btn.innerText = "解析中...";
-
+      btn.disabled = true; btn.innerText = "解析中...";
       try {
         const response = await fetch(`${API_BASE}/download`, {
           method: 'POST',
@@ -46,12 +47,10 @@
           body: JSON.stringify({ url })
         });
         const data = await response.json();
-        
         if (data.status === "success") {
           document.getElementById('result').classList.remove('hidden');
           document.getElementById('thumb').src = data.thumbnail;
           document.getElementById('title').innerText = data.title;
-          
           document.getElementById('formats').innerHTML = data.formats.map(f => `
             <a href="${API_BASE}/proxy_download?url=${encodeURIComponent(f.url)}" 
                target="_blank" 
@@ -60,15 +59,8 @@
                <span class="text-blue-600 font-bold">点击下载</span>
             </a>
           `).join('');
-        } else {
-          alert("解析失败: " + data.message);
-        }
-      } catch (err) {
-        alert("系统错误，请检查网络");
-      } finally {
-        btn.disabled = false;
-        btn.innerText = "解析";
-      }
+        } else { alert("解析失败: " + data.message); }
+      } catch (err) { alert("系统错误"); } finally { btn.disabled = false; btn.innerText = "解析"; }
     }
   </script>
 </body>
