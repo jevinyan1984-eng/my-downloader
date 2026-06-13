@@ -8,7 +8,7 @@ import requests
 app = Flask(__name__)
 
 # 修改：这里填入你最终部署域名的地址
-ALLOWED_DOMAIN = "https://your-domain.com" 
+ALLOWED_DOMAIN = "https://video-downloader.youtube.kdns.fr/" 
 CORS(app, origins=[ALLOWED_DOMAIN])
 
 # 根路由：保持监控正常
