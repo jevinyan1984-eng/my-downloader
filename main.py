@@ -9,7 +9,7 @@ app = Flask(__name__)
 
 # 设置你的域名
 ALLOWED_DOMAIN = "video-downloader.youtube.kdns.fr"
-CORS(app, origins=[f"https://{ALLOWED_DOMAIN}"])
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 @app.route('/', methods=['GET'])
 def home():
