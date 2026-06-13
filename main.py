@@ -1,12 +1,13 @@
 import os
 import json
 import subprocess
-import requests
 from flask import Flask, request, jsonify, Response, stream_with_context
 from flask_cors import CORS
+import requests
 
 app = Flask(__name__)
-CORS(app)
+# 彻底开放跨域，解决请求被拦截问题
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 # --- Cookie 自动生成逻辑 ---
 def setup_cookies():
@@ -16,31 +17,38 @@ def setup_cookies():
     if yt_content:
         with open('youtube_cookies.txt', 'w', encoding='utf-8') as f:
             f.write(yt_content)
-        print("DEBUG: YouTube cookies file generated.")
+        # 调试：验证文件写入
+        if os.path.exists('youtube_cookies.txt'):
+            print(f"DEBUG: YouTube cookies generated. Size: {os.path.getsize('youtube_cookies.txt')} bytes")
+    
     if dy_content:
         with open('douyin_cookies.txt', 'w', encoding='utf-8') as f:
             f.write(dy_content)
-        print("DEBUG: Douyin cookies file generated.")
+        print("DEBUG: Douyin cookies generated.")
 
-# 启动时初始化
+# 程序启动时执行
 setup_cookies()
 
 @app.route('/', methods=['GET'])
 def home():
     return "怡烨科技 解析服务运行正常", 200
 
-@app.route('/download', methods=['POST'])
+@app.route('/download', methods=['POST', 'OPTIONS'])
 def download():
+    # 处理 CORS 预检请求
+    if request.method == 'OPTIONS':
+        return '', 200
+        
     data = request.json
     url = data.get('url')
     if not url:
         return jsonify({"status": "error", "message": "URL missing"}), 400
     
     try:
-        # 构建 yt-dlp 命令，加入 --verbose 以获取最详细的报错
+        # 构建 yt-dlp 命令
         cmd = ['yt-dlp', '--dump-json', '--no-warnings', '--no-playlist', '--verbose']
         
-        # 智能匹配 Cookie
+        # 匹配 Cookie
         if 'douyin.com' in url or 'tiktok.com' in url:
             if os.path.exists('douyin_cookies.txt'):
                 cmd.extend(['--cookies', 'douyin_cookies.txt'])
@@ -54,20 +62,16 @@ def download():
             url
         ])
         
-        # 执行命令并捕获输出
+        # 执行
         result = subprocess.run(cmd, capture_output=True, text=True)
         
-        # 详细报错排查逻辑
         if result.returncode != 0:
-            # 将错误详细信息写入日志
             print(f"DEBUG_ERROR_STDERR: {result.stderr}")
-            print(f"DEBUG_ERROR_STDOUT: {result.stdout}")
-            return jsonify({"status": "error", "message": f"解析失败: 请查看后端日志"}), 200
-            
-        if not result.stdout:
-            return jsonify({"status": "error", "message": "解析结果为空，请确认链接是否有效"}), 200
+            return jsonify({"status": "error", "message": "解析失败，请检查 Render 后端日志"}), 200
             
         info = json.loads(result.stdout)
+        
+        # 处理结果并返回
         return jsonify({
             "status": "success",
             "title": info.get("title", "无标题"),
@@ -79,19 +83,6 @@ def download():
     except Exception as e:
         print(f"DEBUG_EXCEPTION: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 200
-
-@app.route('/proxy_download')
-def proxy_download():
-    video_url = request.args.get('url')
-    if not video_url: return "No URL", 400
-    
-    # 简单的流代理，仅限非 YouTube 平台使用
-    try:
-        r = requests.get(video_url, stream=True, timeout=10)
-        return Response(stream_with_context(r.iter_content(chunk_size=1024)), 
-                        content_type=r.headers.get('Content-Type', 'video/mp4'))
-    except Exception as e:
-        return f"Proxy failed: {str(e)}", 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
