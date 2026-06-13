@@ -7,40 +7,40 @@ import requests
 
 app = Flask(__name__)
 
-# 修改：这里填入你最终部署域名的地址
-ALLOWED_DOMAIN = "https://video-downloader.youtube.kdns.fr/" 
-CORS(app, origins=[ALLOWED_DOMAIN])
+# 设置你的域名
+ALLOWED_DOMAIN = "video-downloader.youtube.kdns.fr"
+CORS(app, origins=[f"https://{ALLOWED_DOMAIN}"])
 
-# 根路由：保持监控正常
 @app.route('/', methods=['GET'])
 def home():
     return "API is running!", 200
 
-# 校验器函数：检查 Referer
 def is_valid_request():
-    referer = request.headers.get('Referer')
-    # 如果没有 Referer 或者来源域名不是你的，则拒绝
-    if not referer or ALLOWED_DOMAIN not in referer:
-        return False
-    return True
+    referer = request.headers.get('Referer', '')
+    print(f"DEBUG: Checking Referer: {referer}") # <--- 关键：在Render日志里查看这个值
+    
+    # 检查逻辑：只要域名存在于 referer 中即通过
+    if ALLOWED_DOMAIN in referer:
+        return True
+    return False
 
 @app.route('/download', methods=['POST'])
 def download():
-    # 安全校验：阻止非本站调用
     if not is_valid_request():
-        return jsonify({"status": "error", "message": "Access Denied: Invalid Origin"}), 403
+        return jsonify({"status": "error", "message": "Access Denied: Referer invalid"}), 403
         
     data = request.json
     url = data.get('url')
     if not url:
-        return jsonify({"status": "error", "message": "未提供URL"}), 400
+        return jsonify({"status": "error", "message": "URL missing"}), 400
     
     try:
         cmd = ['yt-dlp', '--dump-json', '--no-warnings', url]
         result = subprocess.run(cmd, capture_output=True, text=True)
         
         if result.returncode != 0:
-            return jsonify({"status": "error", "message": f"解析失败: {result.stderr}"}), 200
+            print(f"DEBUG: yt-dlp error: {result.stderr}") # <--- 关键：查看解析报错
+            return jsonify({"status": "error", "message": "解析失败"}), 200
             
         info = json.loads(result.stdout)
         return jsonify({
@@ -51,26 +51,19 @@ def download():
                         for f in info.get("formats", []) if f.get("vcodec") != "none"]
         })
     except Exception as e:
+        print(f"DEBUG: Server error: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 200
 
 @app.route('/proxy_download')
 def proxy_download():
-    # 安全校验：阻止非本站调用
-    if not is_valid_request():
-        return "Access Denied: Invalid Origin", 403
-        
+    # 允许直接访问，或者你也可以加上 referer 校验
     video_url = request.args.get('url')
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        'Referer': 'https://x.com/'
-    }
+    if not video_url: return "No URL", 400
     
-    try:
-        r = requests.get(video_url, headers=headers, stream=True)
-        return Response(stream_with_context(r.iter_content(chunk_size=1024)), 
-                        content_type=r.headers.get('Content-Type', 'video/mp4'))
-    except Exception as e:
-        return f"下载转发失败: {str(e)}", 500
+    headers = {'User-Agent': 'Mozilla/5.0', 'Referer': 'https://x.com/'}
+    r = requests.get(video_url, headers=headers, stream=True)
+    return Response(stream_with_context(r.iter_content(chunk_size=1024)), 
+                    content_type=r.headers.get('Content-Type', 'video/mp4'))
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
