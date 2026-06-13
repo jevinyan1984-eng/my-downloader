@@ -2,45 +2,65 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <title>Twitter 视频解析器</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Twitter 视频下载器</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-100 p-10">
-  <div class="max-w-md mx-auto bg-white p-6 rounded-lg shadow">
-    <input id="url" class="w-full border p-2 mb-4" placeholder="粘贴 Twitter 链接">
-    <button onclick="parse()" class="w-full bg-blue-600 text-white p-2 rounded">解析</button>
-    <div id="result" class="hidden mt-4">
-      <img id="thumb" class="w-full mb-2">
-      <h3 id="title" class="font-bold"></h3>
-      <div id="formats"></div>
+<body class="bg-gray-100 min-h-screen py-10">
+  <div class="max-w-md mx-auto bg-white p-6 rounded-xl shadow-lg">
+    <h1 class="text-2xl font-bold mb-5 text-center">Twitter 视频下载器</h1>
+    
+    <div class="flex gap-2 mb-6">
+      <input type="text" id="url" class="flex-1 border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="粘贴 Twitter 链接...">
+      <button onclick="parse()" id="parseBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition">解析</button>
+    </div>
+
+    <div id="result" class="hidden border-t pt-4">
+      <img id="thumb" class="w-full rounded mb-3">
+      <h3 id="title" class="font-bold text-gray-800 mb-3"></h3>
+      <div id="formats" class="space-y-2"></div>
     </div>
   </div>
 
   <script>
     async function parse() {
       const url = document.getElementById('url').value;
+      if (!url) return alert("请输入链接");
+
+      const btn = document.getElementById('parseBtn');
+      btn.disabled = true;
+      btn.innerText = "解析中...";
+
       try {
         const res = await fetch('https://my-downloader-uqa0.onrender.com/download', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ url })
+          body: JSON.stringify({ url: url })
         });
         const data = await res.json();
         
         if (data.status === "error") {
           alert("解析失败: " + data.message);
-          console.error("后端详情:", data.message);
         } else {
           document.getElementById('result').classList.remove('hidden');
           document.getElementById('thumb').src = data.thumbnail;
           document.getElementById('title').innerText = data.title;
-          document.getElementById('formats').innerHTML = data.formats.map(f => 
-            `<a href="${f.url}" target="_blank" class="block bg-blue-100 p-2 my-1">下载 (${f.note})</a>`
-          ).join('');
+          
+          // 关键点：添加 referrerpolicy="no-referrer" 绕过推特防盗链
+          document.getElementById('formats').innerHTML = data.formats.map(f => `
+            <a href="${f.url}" 
+               target="_blank" 
+               referrerpolicy="no-referrer" 
+               class="block bg-blue-50 hover:bg-blue-100 p-3 rounded text-blue-700 font-medium text-center transition border border-blue-200">
+               下载视频 (${f.note})
+            </a>
+          `).join('');
         }
       } catch (err) {
-        alert("通信出错，请按 F12 查看控制台");
-        console.error(err);
+        alert("通信出错，请检查网络");
+      } finally {
+        btn.disabled = false;
+        btn.innerText = "解析";
       }
     }
   </script>
