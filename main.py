@@ -1,26 +1,20 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-import subprocess
-import os
-import json
-
-app = Flask(__name__)
-# 确保域名完全匹配
-CORS(app, origins=["https://jevinyan1984-eng.github.io"])
-
 @app.route('/download', methods=['POST'])
 def download():
     data = request.json
     url = data.get('url')
-    if not url:
-        return jsonify({"status": "error", "message": "未提供URL"}), 400
     
     try:
-        # 使用 --dump-json 获取视频元数据
-        cmd = ['yt-dlp', '--dump-json', '--no-warnings', url]
-        result = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
-        info = json.loads(result.decode())
+        # 使用 subprocess.run 代替 check_output，并捕获 stderr
+        # 这能保证我们能拿到真正的错误原因
+        result = subprocess.run(
+            ['yt-dlp', '--dump-json', '--no-warnings', url], 
+            capture_output=True, text=True
+        )
         
+        if result.returncode != 0:
+            return jsonify({"status": "error", "message": f"yt-dlp错误: {result.stderr}"}), 200
+            
+        info = json.loads(result.stdout)
         return jsonify({
             "status": "success",
             "title": info.get("title", "无标题"),
@@ -29,13 +23,4 @@ def download():
                         for f in info.get("formats", []) if f.get("vcodec") != "none"]
         })
     except Exception as e:
-        # 错误时返回 status: error，不要直接 500 报错
-        return jsonify({"status": "error", "message": str(e)}), 200
-
-@app.route('/', methods=['GET'])
-def index():
-    return "API is running."
-
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 8080))
-    app.run(host='0.0.0.0', port=port)
+        return jsonify({"status": "error", "message": f"程序异常: {str(e)}"}), 200
